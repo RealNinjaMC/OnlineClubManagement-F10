@@ -326,4 +326,4 @@ for update to authenticated using (user_id = auth.uid()) with check (
   )
 );
 
-alter publication supabase_realtime add table public.messages, public.polls, public.votes;
+alter publication supabase_realtime add table public.profiles, public.clubs, public.memberships, public.events, public.rsvps, public.announcements, public.feedback, public.messages, public.polls, public.votes;

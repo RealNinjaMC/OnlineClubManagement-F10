@@ -1861,6 +1861,15 @@ textarea.input {
   color: var(--color-danger);
 }
 
+.toast-info {
+  max-width: min(420px, calc(100vw - 32px));
+  border-color: var(--color-accent);
+}
+
+.toast-info .toast-icon {
+  color: var(--color-accent);
+}
+
 .chat {
   display: flex;
   flex-direction: column;

@@ -22,6 +22,15 @@ export function AuthProvider({ children }) {
       .eq('id', userId)
       .single()
       .then(({ data, error }) => (error ? supabase.auth.signOut() : setProfile(data)))
+    const channel = supabase
+      .channel('my-profile')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` }, ({ new: row }) =>
+        setProfile({ id: row.id, name: row.name, role: row.role }),
+      )
+      .subscribe()
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [userId])
 
   async function signIn(email, password) {

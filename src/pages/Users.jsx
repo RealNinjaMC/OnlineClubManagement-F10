@@ -3,6 +3,7 @@ import { getInitials } from '../components/ClubCard'
 import EmptyState from '../components/EmptyState'
 import { useAuth } from '../context/AuthContext'
 import { useClubs } from '../context/ClubsContext'
+import { supabase } from '../lib/supabase'
 
 const ROLE_LABELS = { root: 'Root', host: 'Host', member: 'Member' }
 
@@ -19,7 +20,15 @@ export default function Users() {
   }
 
   useEffect(() => {
-    if (isRoot) load()
+    if (!isRoot) return
+    load()
+    const channel = supabase
+      .channel('user-list')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, load)
+      .subscribe()
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [isRoot])
 
   async function changeRole(person, role) {

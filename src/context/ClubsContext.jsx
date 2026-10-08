@@ -81,6 +81,9 @@ export function ClubsProvider({ children }) {
   const [view, setView] = useState(savedView)
   const [toast, setToast] = useState(null)
   const toastTimer = useRef(null)
+  const refreshTimer = useRef(null)
+  const clubsRef = useRef([])
+  const openChat = useRef(null)
 
   useEffect(() => {
     try {
@@ -90,30 +93,81 @@ export function ClubsProvider({ children }) {
 
   const role = canHost ? view : 'member'
 
-  function showToast(message, tone = 'success') {
+  function showToast(message, tone = 'success', duration = 3000) {
     clearTimeout(toastTimer.current)
     setToast({ id: Date.now(), message, tone })
-    toastTimer.current = setTimeout(() => setToast(null), 3000)
+    toastTimer.current = setTimeout(() => setToast(null), duration)
+  }
+
+  function notify(message) {
+    showToast(message.length > 90 ? `${message.slice(0, 90)}…` : message, 'info', 5000)
   }
 
   async function refresh() {
     const { data, error } = await supabase.from('clubs').select(CLUB_QUERY).order('created_at')
     if (error) showToast(error.message, 'error')
-    else setClubs(data.map((row) => toClub(row, user.id)))
+    else {
+      clubsRef.current = data.map((row) => toClub(row, user.id))
+      setClubs(clubsRef.current)
+    }
     setReady(true)
+  }
+
+  function refreshSoon() {
+    clearTimeout(refreshTimer.current)
+    refreshTimer.current = setTimeout(refresh, 300)
+  }
+
+  async function nameOf(personId) {
+    const { data } = await supabase.from('profiles').select('name').eq('id', personId).single()
+    return data?.name ?? 'Someone'
+  }
+
+  async function handleChange({ table, eventType, new: row }) {
+    if (table !== 'messages' && table !== 'profiles') refreshSoon()
+    if (eventType === 'DELETE') return
+
+    if (table === 'clubs') {
+      if (eventType === 'INSERT' && row.host_id !== user.id) notify(`New club: ${row.name}`)
+      return
+    }
+
+    const club = clubsRef.current.find((item) => item.id === row.club_id)
+    if (!club) return
+    const hosting = club.hostId === user.id
+    const member = club.members.some((person) => person.id === user.id)
+
+    if (table === 'memberships' && eventType === 'INSERT' && hosting) {
+      notify(`${await nameOf(row.user_id)} asked to join ${club.name}`)
+    }
+    if (table === 'memberships' && eventType === 'UPDATE' && row.user_id === user.id && row.status === 'member') {
+      notify(`You're in! ${club.name} approved your request`)
+    }
+    if (table === 'feedback' && hosting) notify(`${club.name} got a new ${row.rating}★ rating`)
+    if (table === 'messages' && (member || hosting) && row.user_id !== user.id && openChat.current !== club.id) {
+      notify(`${await nameOf(row.user_id)} in ${club.name}: ${row.text}`)
+    }
+    if (!member || eventType !== 'INSERT') return
+    if (table === 'events') notify(`New event in ${club.name}: ${row.title}`)
+    if (table === 'announcements' && row.author_id !== user.id) notify(`New announcement in ${club.name}`)
+    if (table === 'polls') notify(`New poll in ${club.name}: ${row.question}`)
   }
 
   useEffect(() => {
     refresh()
     const channel = supabase
-      .channel('poll-updates')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'polls' }, refresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'votes' }, refresh)
+      .channel('live-updates')
+      .on('postgres_changes', { event: '*', schema: 'public' }, handleChange)
       .subscribe()
     return () => {
+      clearTimeout(refreshTimer.current)
       supabase.removeChannel(channel)
     }
   }, [user.id])
+
+  function setOpenChat(clubId) {
+    openChat.current = clubId
+  }
 
   async function run(request, message) {
     const { error } = await request
@@ -234,6 +288,7 @@ export function ClubsProvider({ children }) {
     setRole: setView,
     toast,
     showToast,
+    setOpenChat,
     isMember,
     hasRequested,
     isHostOf,

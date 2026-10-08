@@ -13,7 +13,7 @@ function formatTime(value) {
 
 export default function ClubChat({ club, canModerate }) {
   const { user } = useAuth()
-  const { showToast } = useClubs()
+  const { showToast, setOpenChat } = useClubs()
   const [messages, setMessages] = useState(null)
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
@@ -36,12 +36,14 @@ export default function ClubChat({ club, canModerate }) {
 
   useEffect(() => {
     load()
+    setOpenChat(club.id)
     const channel = supabase
       .channel(`chat-${club.id}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `club_id=eq.${club.id}` }, load)
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, (payload) => removeMessage(payload.old.id))
       .subscribe()
     return () => {
+      setOpenChat(null)
       supabase.removeChannel(channel)
     }
   }, [club.id])
