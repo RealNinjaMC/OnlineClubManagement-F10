@@ -1,4 +1,4 @@
-function formatDaysAgo(dateString) {
+export function formatDaysAgo(dateString) {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const days = Math.round((today - new Date(`${dateString}T00:00`)) / 86400000)

@@ -1,15 +1,16 @@
 import { Link } from 'react-router-dom'
 import ActivityBadge from '../components/ActivityBadge'
 import AnnouncementItem from '../components/AnnouncementItem'
-import { ClubLogo, getInitials } from '../components/ClubCard'
+import { ClubLogo, getInitials, memberCount } from '../components/ClubCard'
 import EmptyState from '../components/EmptyState'
 import EventItem from '../components/EventItem'
+import { useAuth } from '../context/AuthContext'
 import { useClubs } from '../context/ClubsContext'
-import { CURRENT_USER, dateFromToday } from '../data/seed'
+import { dateFromToday } from '../data/seed'
 import { getUpcomingEvents } from '../utils/activity'
 
 function PendingRequests({ clubs, onApprove, onReject }) {
-  const requests = clubs.flatMap((club) => club.requests.map((name) => ({ name, club })))
+  const requests = clubs.flatMap((club) => club.requests.map((person) => ({ person, club })))
 
   return (
     <section className="section">
@@ -19,16 +20,16 @@ function PendingRequests({ clubs, onApprove, onReject }) {
       </div>
       {requests.length > 0 ? (
         <ul className="list">
-          {requests.map(({ name, club }) => (
-            <li key={`${club.id}-${name}`} className="list-item">
-              <span className="avatar" aria-hidden="true">{getInitials(name)}</span>
+          {requests.map(({ person, club }) => (
+            <li key={`${club.id}-${person.id}`} className="list-item">
+              <span className="avatar" aria-hidden="true">{getInitials(person.name)}</span>
               <div className="list-item-body">
-                <p className="item-title">{name}</p>
+                <p className="item-title">{person.name}</p>
                 <p className="muted small">Wants to join {club.name}</p>
               </div>
               <div className="button-row">
-                <button type="button" className="btn btn-sm btn-danger" onClick={() => onReject(club.id, name)}>Reject</button>
-                <button type="button" className="btn btn-sm btn-primary" onClick={() => onApprove(club.id, name)}>Approve</button>
+                <button type="button" className="btn btn-sm btn-danger" onClick={() => onReject(club.id, person)}>Reject</button>
+                <button type="button" className="btn btn-sm btn-primary" onClick={() => onApprove(club.id, person)}>Approve</button>
               </div>
             </li>
           ))}
@@ -41,7 +42,8 @@ function PendingRequests({ clubs, onApprove, onReject }) {
 }
 
 export default function Dashboard() {
-  const { clubs, role, host, isMember, isHostOf, toggleRsvp, approveRequest, rejectRequest } = useClubs()
+  const { profile } = useAuth()
+  const { clubs, role, isMember, isHostOf, toggleRsvp, approveRequest, rejectRequest } = useClubs()
 
   const hostView = role === 'host'
   const hostedClubs = clubs.filter(isHostOf)
@@ -71,7 +73,7 @@ export default function Dashboard() {
       <div className="page-header">
         <div>
           <h1>Dashboard</h1>
-          <p className="page-subtitle">{hostView ? host : CURRENT_USER} · {today}</p>
+          <p className="page-subtitle">{profile.name} · {today}</p>
         </div>
       </div>
 
@@ -90,7 +92,7 @@ export default function Dashboard() {
                       <ClubLogo club={club} size="sm" />
                       <div className="list-item-body">
                         <p className="item-title">{club.name}</p>
-                        <p className="muted small">{club.members.length} members · {club.requests.length} pending</p>
+                        <p className="muted small">{memberCount(club)} · {club.requests.length} pending</p>
                       </div>
                       <ActivityBadge club={club} />
                     </Link>
@@ -180,7 +182,7 @@ export default function Dashboard() {
                       <ClubLogo club={club} size="sm" />
                       <div className="list-item-body">
                         <p className="item-title">{club.name}</p>
-                        <p className="muted small">{club.members.length} members</p>
+                        <p className="muted small">{memberCount(club)}</p>
                       </div>
                       <ActivityBadge club={club} />
                     </Link>

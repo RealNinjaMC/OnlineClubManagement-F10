@@ -1,5 +1,6 @@
-import { HOSTS, dateFromToday } from '../data/seed'
+import { dateFromToday } from '../data/seed'
 import { getActivity, getUpcomingEvents } from './activity'
+import { getRating } from './rating'
 
 function sum(clubs, getValue) {
   return clubs.reduce((total, club) => total + getValue(club), 0)
@@ -42,7 +43,8 @@ export function getCategoryCounts(clubs) {
 }
 
 export function getMembersByHost(clubs) {
-  return HOSTS.map((host) => ({
+  const hosts = [...new Set(clubs.map((club) => club.host))].sort()
+  return hosts.map((host) => ({
     label: host,
     value: sum(clubs.filter((club) => club.host === host), (club) => club.members.length),
   }))
@@ -50,7 +52,7 @@ export function getMembersByHost(clubs) {
 
 export function getLeaderboard(clubs) {
   return clubs
-    .map((club) => ({ club, ...getActivity(club), upcoming: getUpcomingEvents(club).length }))
+    .map((club) => ({ club, ...getActivity(club), upcoming: getUpcomingEvents(club).length, rating: getRating(club) }))
     .sort((a, b) => b.score - a.score)
 }
 

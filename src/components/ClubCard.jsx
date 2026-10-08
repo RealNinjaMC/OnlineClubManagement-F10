@@ -1,5 +1,11 @@
 import { Link } from 'react-router-dom'
+import { getRating } from '../utils/rating'
 import ActivityBadge from './ActivityBadge'
+
+export function memberCount(club) {
+  const count = club.members.length
+  return `${count} ${count === 1 ? 'member' : 'members'}`
+}
 
 export function getInitials(name) {
   return name
@@ -19,6 +25,8 @@ export function ClubLogo({ club, size = 'md' }) {
 }
 
 export default function ClubCard({ club, index, joined, requested }) {
+  const rating = getRating(club)
+
   return (
     <Link to={`/club/${club.id}`} className="card club-card" style={{ '--i': index }}>
       <div className="club-card-top">
@@ -40,7 +48,10 @@ export default function ClubCard({ club, index, joined, requested }) {
       </div>
 
       <div className="club-card-footer">
-        <span className="muted small">{club.members.length} members</span>
+        <span className="muted small">
+          {memberCount(club)}
+          {rating.count > 0 && <span className="card-rating"> · ★ {rating.average.toFixed(1)}</span>}
+        </span>
         <ActivityBadge club={club} />
       </div>
     </Link>

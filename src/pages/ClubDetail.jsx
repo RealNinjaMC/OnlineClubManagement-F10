@@ -2,12 +2,15 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import ActivityBadge from '../components/ActivityBadge'
 import AnnouncementItem from '../components/AnnouncementItem'
-import { ClubLogo, getInitials } from '../components/ClubCard'
+import { ClubLogo, getInitials, memberCount } from '../components/ClubCard'
 import EmptyState from '../components/EmptyState'
 import EventItem from '../components/EventItem'
+import { FeedbackForm, FeedbackItem, RatingSummary, Stars } from '../components/Feedback'
+import { useAuth } from '../context/AuthContext'
 import { useClubs } from '../context/ClubsContext'
-import { CURRENT_USER, dateFromToday } from '../data/seed'
+import { dateFromToday } from '../data/seed'
 import { getActivity, getUpcomingEvents } from '../utils/activity'
+import { getRating } from '../utils/rating'
 
 const EMPTY_EVENT = { title: '', date: '', time: '18:00', room: '' }
 
@@ -84,9 +87,10 @@ function PostAnnouncementForm({ onPost }) {
 
 export default function ClubDetail() {
   const { id } = useParams()
+  const { user } = useAuth()
   const {
     clubs, role, isMember, hasRequested, isHostOf, joinClub, leaveClub, toggleRsvp,
-    approveRequest, rejectRequest, addEvent, postAnnouncement, deleteClub,
+    approveRequest, rejectRequest, addEvent, postAnnouncement, deleteClub, addFeedback,
   } = useClubs()
   const [tab, setTab] = useState('events')
   const navigate = useNavigate()
@@ -109,11 +113,14 @@ export default function ClubDetail() {
   const requested = hasRequested(club)
   const upcomingEvents = getUpcomingEvents(club)
   const activeTab = tab === 'requests' && !isHost ? 'events' : tab
+  const rating = getRating(club)
+  const myFeedback = club.feedback.find((item) => item.authorId === user.id)
 
   const tabs = [
     { id: 'events', label: 'Events', count: upcomingEvents.length },
     { id: 'members', label: 'Members', count: club.members.length },
     { id: 'announcements', label: 'Announcements', count: club.announcements.length },
+    { id: 'feedback', label: 'Feedback', count: club.feedback.length },
   ]
   if (isHost) tabs.push({ id: 'requests', label: 'Requests', count: club.requests.length })
 
@@ -148,9 +155,18 @@ export default function ClubDetail() {
           <div className="club-meta">
             <span>{club.category}</span>
             <span aria-hidden="true">·</span>
-            <span>{club.members.length} members</span>
+            <span>{memberCount(club)}</span>
             <span aria-hidden="true">·</span>
             <span>Hosted by {club.host}</span>
+            {rating.count > 0 && (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="rating-inline">
+                  <Stars value={rating.average} />
+                  {rating.average.toFixed(1)}
+                </span>
+              </>
+            )}
             <ActivityBadge club={club} />
           </div>
           <p className="club-description">{club.description}</p>
@@ -177,7 +193,7 @@ export default function ClubDetail() {
         <p className="host-note">You host this club: review requests, add events, post announcements or delete it.</p>
       )}
       {hostView && !isHost && (
-        <p className="host-note">Only {club.host} can manage this club. Switch host in the sidebar to make changes.</p>
+        <p className="host-note">Only {club.host} can manage this club.</p>
       )}
 
       <div className="tabs" role="tablist" aria-label="Club sections">
@@ -223,11 +239,11 @@ export default function ClubDetail() {
         {activeTab === 'members' && (
           club.members.length > 0 ? (
             <ul className="list">
-              {club.members.map((name) => (
-                <li key={name} className="list-item">
-                  <span className="avatar" aria-hidden="true">{getInitials(name)}</span>
-                  <span className="item-title list-item-body">{name}</span>
-                  {name === CURRENT_USER && <span className="chip chip-accent">You</span>}
+              {club.members.map((person) => (
+                <li key={person.id} className="list-item">
+                  <span className="avatar" aria-hidden="true">{getInitials(person.name)}</span>
+                  <span className="item-title list-item-body">{person.name}</span>
+                  {person.id === user.id && <span className="chip chip-accent">You</span>}
                 </li>
               ))}
             </ul>
@@ -251,19 +267,41 @@ export default function ClubDetail() {
           </>
         )}
 
+        {activeTab === 'feedback' && (
+          <>
+            {rating.count > 0 && <RatingSummary rating={rating} />}
+            {member && !hostView && !myFeedback && (
+              <FeedbackForm key={club.id} onSubmit={(stars, text) => addFeedback(club.id, stars, text)} />
+            )}
+            {member && !hostView && myFeedback && (
+              <p className="muted panel-note">You rated this club {myFeedback.rating} out of 5. Feedback is final once posted.</p>
+            )}
+            {!hostView && !member && <p className="muted panel-note">Join this club to leave feedback.</p>}
+            {club.feedback.length > 0 ? (
+              <ul className="list">
+                {club.feedback.map((item) => (
+                  <FeedbackItem key={item.id} feedback={item} />
+                ))}
+              </ul>
+            ) : (
+              <EmptyState title="No feedback yet" text="Members can rate the club out of 5 stars and say what they think." />
+            )}
+          </>
+        )}
+
         {activeTab === 'requests' && (
           club.requests.length > 0 ? (
             <ul className="list">
-              {club.requests.map((name) => (
-                <li key={name} className="list-item">
-                  <span className="avatar" aria-hidden="true">{getInitials(name)}</span>
+              {club.requests.map((person) => (
+                <li key={person.id} className="list-item">
+                  <span className="avatar" aria-hidden="true">{getInitials(person.name)}</span>
                   <div className="list-item-body">
-                    <p className="item-title">{name}</p>
+                    <p className="item-title">{person.name}</p>
                     <p className="muted small">Wants to join</p>
                   </div>
                   <div className="button-row">
-                    <button type="button" className="btn btn-sm btn-danger" onClick={() => rejectRequest(club.id, name)}>Reject</button>
-                    <button type="button" className="btn btn-sm btn-primary" onClick={() => approveRequest(club.id, name)}>Approve</button>
+                    <button type="button" className="btn btn-sm btn-danger" onClick={() => rejectRequest(club.id, person)}>Reject</button>
+                    <button type="button" className="btn btn-sm btn-primary" onClick={() => approveRequest(club.id, person)}>Approve</button>
                   </div>
                 </li>
               ))}

@@ -106,6 +106,7 @@ export default function Stats() {
                   <th className="num">Members</th>
                   <th className="num">Upcoming events</th>
                   <th className="num">Score</th>
+                  <th className="num">Rating</th>
                   <th>Activity</th>
                 </tr>
               </thead>
@@ -123,6 +124,7 @@ export default function Stats() {
                     <td className="num">{row.club.members.length}</td>
                     <td className="num">{row.upcoming}</td>
                     <td className="num">{row.score}</td>
+                    <td className="num">{row.rating.count > 0 ? `★ ${row.rating.average.toFixed(1)}` : '–'}</td>
                     <td><ActivityBadge club={row.club} /></td>
                   </tr>
                 ))}

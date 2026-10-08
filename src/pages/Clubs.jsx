@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import ActivityBadge from '../components/ActivityBadge'
 import ClubCard, { ClubLogo } from '../components/ClubCard'
 import EmptyState from '../components/EmptyState'
+import { useAuth } from '../context/AuthContext'
 import { useClubs } from '../context/ClubsContext'
 import { CATEGORIES, dateFromToday } from '../data/seed'
 import { getActivity, getUpcomingEvents } from '../utils/activity'
@@ -75,6 +76,7 @@ function sortClubs(clubs, sortBy) {
 }
 
 export default function Clubs() {
+  const { canHost } = useAuth()
   const { clubs, role, setRole, isMember, hasRequested, createClub } = useClubs()
   const navigate = useNavigate()
   const [creating, setCreating] = useState(false)
@@ -119,8 +121,9 @@ export default function Clubs() {
 
   const isHost = role === 'host'
 
-  function handleCreate(club) {
-    navigate(`/club/${createClub(club)}`)
+  async function handleCreate(club) {
+    const id = await createClub(club)
+    if (id) navigate(`/club/${id}`)
   }
 
   function clearFilters() {
@@ -145,12 +148,12 @@ export default function Clubs() {
       {clubs.length === 0 && !creating && (
         <EmptyState
           title="No clubs yet"
-          text={isHost ? 'Create the first club to get started.' : 'Switch to Host view to create the first club.'}
+          text={isHost ? 'Create the first club to get started.' : canHost ? 'Switch to Host view to create the first club.' : 'Clubs appear here once a host creates one.'}
           action={
             isHost ? (
               <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}>New club</button>
             ) : (
-              <button type="button" className="btn" onClick={() => setRole('host')}>Switch to Host</button>
+              canHost && <button type="button" className="btn" onClick={() => setRole('host')}>Switch to Host</button>
             )
           }
         />
