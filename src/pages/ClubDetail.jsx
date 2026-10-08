@@ -2,10 +2,12 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import ActivityBadge from '../components/ActivityBadge'
 import AnnouncementItem from '../components/AnnouncementItem'
+import ClubChat from '../components/ClubChat'
 import { ClubLogo, getInitials, memberCount } from '../components/ClubCard'
 import EmptyState from '../components/EmptyState'
 import EventItem from '../components/EventItem'
 import { FeedbackForm, FeedbackItem, RatingSummary, Stars } from '../components/Feedback'
+import { PollCard, PollForm } from '../components/Polls'
 import { useAuth } from '../context/AuthContext'
 import { useClubs } from '../context/ClubsContext'
 import { dateFromToday } from '../data/seed'
@@ -87,10 +89,11 @@ function PostAnnouncementForm({ onPost }) {
 
 export default function ClubDetail() {
   const { id } = useParams()
-  const { user } = useAuth()
+  const { user, isRoot, canHost } = useAuth()
   const {
     clubs, role, isMember, hasRequested, isHostOf, joinClub, leaveClub, toggleRsvp,
     approveRequest, rejectRequest, addEvent, postAnnouncement, deleteClub, addFeedback,
+    createPoll, deletePoll, vote,
   } = useClubs()
   const [tab, setTab] = useState('events')
   const navigate = useNavigate()
@@ -115,11 +118,15 @@ export default function ClubDetail() {
   const activeTab = tab === 'requests' && !isHost ? 'events' : tab
   const rating = getRating(club)
   const myFeedback = club.feedback.find((item) => item.authorId === user.id)
+  const canModerate = canHost && (club.hostId === user.id || isRoot)
+  const canChat = member || canModerate
 
   const tabs = [
     { id: 'events', label: 'Events', count: upcomingEvents.length },
     { id: 'members', label: 'Members', count: club.members.length },
     { id: 'announcements', label: 'Announcements', count: club.announcements.length },
+    { id: 'chat', label: 'Chat' },
+    { id: 'polls', label: 'Polls', count: club.polls.length },
     { id: 'feedback', label: 'Feedback', count: club.feedback.length },
   ]
   if (isHost) tabs.push({ id: 'requests', label: 'Requests', count: club.requests.length })
@@ -128,6 +135,11 @@ export default function ClubDetail() {
     if (!window.confirm(`Delete ${club.name}? This removes its members, events and announcements.`)) return
     navigate('/')
     deleteClub(club.id)
+  }
+
+  function handleDeletePoll(poll) {
+    if (!window.confirm(`Delete the poll "${poll.question}"? Its votes are removed too.`)) return
+    deletePoll(poll.id)
   }
 
   const activity = getActivity(club)
@@ -190,7 +202,7 @@ export default function ClubDetail() {
       </div>
 
       {isHost && (
-        <p className="host-note">You host this club: review requests, add events, post announcements or delete it.</p>
+        <p className="host-note">You host this club: review requests, add events, post announcements, run polls, moderate the chat or delete it.</p>
       )}
       {hostView && !isHost && (
         <p className="host-note">Only {club.host} can manage this club.</p>
@@ -207,9 +219,11 @@ export default function ClubDetail() {
             onClick={() => setTab(item.id)}
           >
             {item.label}
-            <span className={item.id === 'requests' && item.count > 0 ? 'tab-count tab-count-alert' : 'tab-count'}>
-              {item.count}
-            </span>
+            {item.count !== undefined && (
+              <span className={item.id === 'requests' && item.count > 0 ? 'tab-count tab-count-alert' : 'tab-count'}>
+                {item.count}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -263,6 +277,37 @@ export default function ClubDetail() {
               </ul>
             ) : (
               <EmptyState title="No announcements yet" text="Updates from hosts will show up here." />
+            )}
+          </>
+        )}
+
+        {activeTab === 'chat' && (
+          canChat ? (
+            <ClubChat key={club.id} club={club} canModerate={canModerate} />
+          ) : (
+            <EmptyState title="Members only" text="Join this club to read and send messages." />
+          )
+        )}
+
+        {activeTab === 'polls' && (
+          <>
+            {isHost && <PollForm onCreate={(question, options) => createPoll(club.id, question, options)} />}
+            {!hostView && !member && club.polls.length > 0 && <p className="muted panel-note">Join this club to vote.</p>}
+            {club.polls.length > 0 ? (
+              <ul className="list">
+                {club.polls.map((poll) => (
+                  <PollCard
+                    key={poll.id}
+                    poll={poll}
+                    canVote={member && !hostView}
+                    canDelete={isHost}
+                    onVote={(choice) => vote(poll, choice)}
+                    onDelete={() => handleDeletePoll(poll)}
+                  />
+                ))}
+              </ul>
+            ) : (
+              <EmptyState title="No polls yet" text="Hosts can ask the club a question here and see the votes come in live." />
             )}
           </>
         )}

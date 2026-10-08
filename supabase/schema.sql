@@ -58,6 +58,33 @@ create table public.feedback (
   unique (club_id, user_id)
 );
 
+create table public.messages (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null references public.clubs (id) on delete cascade,
+  user_id uuid not null default auth.uid() references public.profiles (id) on delete cascade,
+  text text not null check (char_length(text) between 1 and 500),
+  created_at timestamptz not null default now()
+);
+
+create table public.polls (
+  id uuid primary key default gen_random_uuid(),
+  club_id uuid not null references public.clubs (id) on delete cascade,
+  question text not null check (char_length(question) between 1 and 200),
+  options text[] not null check (
+    cardinality(options) between 2 and 6
+    and char_length(array_to_string(options, '')) <= 600
+    and not ('' = any (options))
+  ),
+  created_at timestamptz not null default now()
+);
+
+create table public.votes (
+  poll_id uuid not null references public.polls (id) on delete cascade,
+  user_id uuid not null default auth.uid() references public.profiles (id) on delete cascade,
+  choice smallint not null check (choice >= 0),
+  primary key (poll_id, user_id)
+);
+
 create index on public.memberships (user_id);
 create index on public.events (club_id);
 create index on public.rsvps (user_id);
@@ -65,6 +92,10 @@ create index on public.announcements (club_id);
 create index on public.announcements (author_id);
 create index on public.feedback (user_id);
 create index on public.clubs (host_id);
+create index on public.messages (club_id, created_at);
+create index on public.messages (user_id);
+create index on public.polls (club_id);
+create index on public.votes (user_id);
 
 create function public.my_role() returns text
 language sql stable security definer set search_path = ''
@@ -177,12 +208,15 @@ alter table public.events enable row level security;
 alter table public.rsvps enable row level security;
 alter table public.announcements enable row level security;
 alter table public.feedback enable row level security;
+alter table public.messages enable row level security;
+alter table public.polls enable row level security;
+alter table public.votes enable row level security;
 
 revoke all on public.profiles, public.clubs, public.memberships, public.events, public.rsvps,
-  public.announcements, public.feedback from anon, authenticated;
+  public.announcements, public.feedback, public.messages, public.polls, public.votes from anon, authenticated;
 
 grant select on public.profiles, public.clubs, public.memberships, public.events, public.rsvps,
-  public.announcements, public.feedback to authenticated;
+  public.announcements, public.feedback, public.messages, public.polls, public.votes to authenticated;
 grant update (name) on public.profiles to authenticated;
 grant insert (name, category, description, tags, color), delete on public.clubs to authenticated;
 grant insert (club_id), update (status), delete on public.memberships to authenticated;
@@ -190,6 +224,9 @@ grant insert (club_id, title, date, time, room) on public.events to authenticate
 grant insert (event_id), delete on public.rsvps to authenticated;
 grant insert (club_id, text) on public.announcements to authenticated;
 grant insert (club_id, rating, text) on public.feedback to authenticated;
+grant insert (club_id, text), delete on public.messages to authenticated;
+grant insert (club_id, question, options), delete on public.polls to authenticated;
+grant insert (poll_id, choice), update (choice) on public.votes to authenticated;
 
 create policy "Signed in users can see profiles" on public.profiles
 for select to authenticated using (true);
@@ -247,3 +284,46 @@ for select to authenticated using (true);
 
 create policy "Members can leave feedback once" on public.feedback
 for insert to authenticated with check (user_id = auth.uid() and public.is_member_of(club_id));
+
+create policy "Club members and hosts can read the chat" on public.messages
+for select to authenticated using (public.is_member_of(club_id) or public.is_host_of(club_id));
+
+create policy "Club members and hosts can chat" on public.messages
+for insert to authenticated with check (
+  user_id = auth.uid() and (public.is_member_of(club_id) or public.is_host_of(club_id))
+);
+
+create policy "Authors and hosts can delete messages" on public.messages
+for delete to authenticated using (user_id = auth.uid() or public.is_host_of(club_id));
+
+create policy "Signed in users can see polls" on public.polls
+for select to authenticated using (true);
+
+create policy "Hosts can create polls" on public.polls
+for insert to authenticated with check (public.is_host_of(club_id));
+
+create policy "Hosts can delete polls" on public.polls
+for delete to authenticated using (public.is_host_of(club_id));
+
+create policy "Signed in users can see votes" on public.votes
+for select to authenticated using (true);
+
+create policy "Members can vote once" on public.votes
+for insert to authenticated with check (
+  user_id = auth.uid()
+  and exists (
+    select 1 from public.polls p
+    where p.id = poll_id and public.is_member_of(p.club_id) and choice < cardinality(p.options)
+  )
+);
+
+create policy "Members can change their vote" on public.votes
+for update to authenticated using (user_id = auth.uid()) with check (
+  user_id = auth.uid()
+  and exists (
+    select 1 from public.polls p
+    where p.id = poll_id and public.is_member_of(p.club_id) and choice < cardinality(p.options)
+  )
+);
+
+alter publication supabase_realtime add table public.messages, public.polls, public.votes;

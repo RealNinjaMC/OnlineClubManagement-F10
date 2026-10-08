@@ -11,7 +11,8 @@ const CLUB_QUERY = `
   memberships(status, person:profiles!user_id(id, name)),
   events(id, title, date, time, room, rsvps(user_id)),
   announcements(id, text, created_at, author:profiles!author_id(id, name)),
-  feedback(id, rating, text, created_at, author:profiles!user_id(id, name))
+  feedback(id, rating, text, created_at, author:profiles!user_id(id, name)),
+  polls(id, question, options, created_at, votes(user_id, choice))
 `
 
 function newestFirst(items) {
@@ -54,6 +55,14 @@ function toClub(row, userId) {
       authorId: item.author.id,
       date: toDateString(new Date(item.created_at)),
     })),
+    polls: newestFirst(row.polls).map((poll) => ({
+      id: poll.id,
+      question: poll.question,
+      options: poll.options,
+      votes: poll.votes,
+      myChoice: poll.votes.find((vote) => vote.user_id === userId)?.choice ?? null,
+      date: toDateString(new Date(poll.created_at)),
+    })),
   }
 }
 
@@ -71,13 +80,13 @@ export function ClubsProvider({ children }) {
   const [ready, setReady] = useState(false)
   const [view, setView] = useState(savedView)
   const [toast, setToast] = useState(null)
+  const toastTimer = useRef(null)
 
   useEffect(() => {
     try {
       localStorage.setItem('campfire-view', view)
     } catch {}
   }, [view])
-  const toastTimer = useRef(null)
 
   const role = canHost ? view : 'member'
 
@@ -96,6 +105,14 @@ export function ClubsProvider({ children }) {
 
   useEffect(() => {
     refresh()
+    const channel = supabase
+      .channel('poll-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'polls' }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'votes' }, refresh)
+      .subscribe()
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [user.id])
 
   async function run(request, message) {
@@ -194,6 +211,22 @@ export function ClubsProvider({ children }) {
     return run(supabase.from('feedback').insert({ club_id: clubId, rating, text }), 'Thanks for your feedback')
   }
 
+  function createPoll(clubId, question, options) {
+    return run(supabase.from('polls').insert({ club_id: clubId, question, options }), 'Poll created')
+  }
+
+  function deletePoll(pollId) {
+    return run(supabase.from('polls').delete().eq('id', pollId), 'Poll deleted')
+  }
+
+  function vote(poll, choice) {
+    if (poll.myChoice === choice) return
+    const request = poll.myChoice === null
+      ? supabase.from('votes').insert({ poll_id: poll.id, choice })
+      : supabase.from('votes').update({ choice }).eq('poll_id', poll.id).eq('user_id', user.id)
+    return run(request, poll.myChoice === null ? 'Vote counted' : 'Vote changed')
+  }
+
   const value = {
     clubs,
     ready,
@@ -214,6 +247,9 @@ export function ClubsProvider({ children }) {
     toggleRsvp,
     postAnnouncement,
     addFeedback,
+    createPoll,
+    deletePoll,
+    vote,
   }
 
   return <ClubsContext.Provider value={value}>{children}</ClubsContext.Provider>
